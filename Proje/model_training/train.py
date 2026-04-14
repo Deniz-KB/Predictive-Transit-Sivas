@@ -3,6 +3,8 @@ import pandas as pd
 import xgboost as xgb
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+import numpy as np
 import pickle
 
 # Proje ana dizini ve klasör yollarının dinamik olarak belirlenmesi
@@ -70,8 +72,20 @@ def main():
     model = xgb.XGBRegressor(n_estimators=100, learning_rate=0.1, max_depth=6, random_state=42)
     model.fit(X_train, y_train)
     
-    score = model.score(X_test, y_test)
-    print(f"Eğitim tamamlandı! Modelin Test Seti R^2 Skoru: {score:.4f}")
+    print("Test seti üzerinde tahmin yapılıyor...")
+    y_pred = model.predict(X_test)
+
+    mae = mean_absolute_error(y_test, y_pred)
+    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+    r2 = r2_score(y_test, y_pred)
+
+    print("\n" + "="*50)
+    print(" "*12 + "🎯 MODEL PERFORMANS KARNESİ")
+    print("="*50)
+    print(f" 📌 MAE  (Ortalama Mutlak Hata)   : {mae:.4f}")
+    print(f" 📌 RMSE (Kök Ortalama Kare Hata) : {rmse:.4f}")
+    print(f" 📌 R2   (Belirleme Katsayısı)    : {r2:.4f}")
+    print("="*50 + "\n")
 
     print("Model klasöre kaydediliyor...")
     os.makedirs(APP_DIR, exist_ok=True)
