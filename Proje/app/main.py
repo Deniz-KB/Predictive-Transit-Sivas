@@ -59,10 +59,17 @@ def log_prediction_to_csv(req_data: dict, prediction: float):
 
 # Jürinin / Arayüzün bize göndereceği veri şablonu
 class TransitRequest(BaseModel):
-    traffic_level: int = Field(..., ge=0, description="Trafik yoğunluk seviyesi (negatif olamaz)")
-    weather_condition: int = Field(..., ge=0, description="Hava durumu kodu (negatif olamaz)")
-    cumulative_delay_min: float = Field(..., ge=0.0, description="Şu ana kadarki gecikme süresi")
-    hour_of_day: int = Field(..., ge=0, le=23, description="Günün saati (0-23 arası olmalı)")
+    day_of_week: int = Field(..., ge=0, le=6, description="Gün (0: Pzt - 6: Paz)")
+    is_weekend: int = Field(..., ge=0, le=1, description="Hafta sonu mu? (0: Hayır, 1: Evet)")
+    planned_duration_min: float = Field(..., ge=0.0, description="Planlanan süre (dk)")
+    num_stops: int = Field(..., ge=1, description="Durak sayısı")
+    weather_condition: int = Field(..., ge=0, le=5, description="Hava (0: Açık - 5: Fırtına)")
+    temperature_c: float = Field(..., description="Sıcaklık (C)")
+    precipitation_mm: float = Field(..., ge=0.0, description="Yağış (mm)")
+    wind_speed_kmh: float = Field(..., ge=0.0, description="Rüzgar hızı (km/h)")
+    humidity_pct: float = Field(..., ge=0.0, le=100.0, description="Nem (%)")
+    traffic_level: int = Field(..., ge=0, le=4, description="Trafik seviyesi (0-4)")
+    bus_capacity: int = Field(..., ge=10, description="Otobüs kapasitesi")
 
 @app.get("/health")
 def healthcheck():
@@ -88,35 +95,26 @@ def get_cached_prediction(traffic_level: int, weather_condition: int, cumulative
     return float(model.predict(input_data)[0])
 
 @app.post("/predict")
-@limiter.limit("5/minute")
-def predict_delay(request: Request, req: TransitRequest, background_tasks: BackgroundTasks):
-    try:
-        if model is None:
-            raise HTTPException(status_code=503, detail="Model henüz yüklenmedi veya çöktü.")
-        
-        # 1. Önbellekli Tahmin (Caching) - Aynı veri gelirse model çağrılmaz
-        prediction = get_cached_prediction(
-            req.traffic_level,
-            req.weather_condition,
-            req.cumulative_delay_min,
-            req.hour_of_day
-        )
-        
-        # 2. Gölge Loglama (Shadow Logging) - Arka planda çalışır
-        background_tasks.add_task(log_prediction_to_csv, req.dict(), prediction)
-        
-        # 3. Hata Payı ve Güven Aralığı (Margin of Error)
-        rmse = 0.64
-        pred_rounded = round(prediction, 1)
-        lower_bound = round(prediction - rmse, 1)
-        upper_bound = round(prediction + rmse, 1)
-        
-        return {
-            "predicted_delay_min": pred_rounded,
-            "margin_of_error": f"± {rmse}",
-            "estimated_range": f"{lower_bound} - {upper_bound} dakika",
-            "message": f"Tahmini gecikme: {pred_rounded} dakika"
-        }
-    except Exception as e:
-        logger.error(f"Tahmin sırasında hata patladı: {e}")
-        raise HTTPException(status_code=500, detail="Tahmin yapılamadı, verileri kontrol edin.")
+async def predict_delay(data: TransitRequest):
+    input_df = pd.DataFrame([{
+        'day_of_week': data.day_of_week,
+        'is_weekend': data.is_weekend,
+        'planned_duration_min': data.planned_duration_min,
+        'num_stops': data.num_stops,
+        'weather_condition': data.weather_condition,
+        'temperature_c': data.temperature_c,
+        'precipitation_mm': data.precipitation_mm,
+        'wind_speed_kmh': data.wind_speed_kmh,
+        'humidity_pct': data.humidity_pct,
+        'traffic_level': data.traffic_level,
+        'bus_capacity': data.bus_capacity
+    }])
+    
+    prediction = model.predict(input_df)[0]
+    predicted_delay = max(0.0, round(float(prediction), 1))
+    
+    return {
+        "predicted_delay_min": predicted_delay,
+        "margin_of_error": "± 1.65 dk",
+        "status": "success"
+    }
