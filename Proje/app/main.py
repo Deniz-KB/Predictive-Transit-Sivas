@@ -23,7 +23,7 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Modeli global olarak tanımlıyoruz
-MODEL_PATH = os.path.join(os.path.dirname(__file__), 'transit_model.pkl')
+MODEL_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'transit_model.pkl')
 model = None
 
 @app.on_event("startup")
